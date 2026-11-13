@@ -9,7 +9,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
 TOKEN = os.getenv("BOT_TOKEN", "9197794771:AAFzNqdHgkpF86BPdTE_S01dyBfpmm_c")
-CHANNEL_ID = "@canabisee"  # <--- Ճիշտ ալիքի username-ը
+CHANNEL_ID = -1006199289062  # Քո ալիքի թվային ID-ն
 
 router = Router()
 
@@ -30,7 +30,7 @@ async def cmd_start(message: Message, bot: Bot):
     if not is_subscribed:
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="📢 Միանալ ալիքին", url=f"https://t.me/{CHANNEL_ID.replace('@', '')}")],
+                [InlineKeyboardButton(text="📢 Միանալ ալիքին", url="https://t.me/canabisee")],
                 [InlineKeyboardButton(text="🔄 Ստուգել բաժանորդագրությունը", callback_data="check_sub")]
             ]
         )
