@@ -9,7 +9,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
 TOKEN = os.getenv("BOT_TOKEN", "9197794771:AAFzNqdHgkpF86BPdTE_S01dyBfpmm_c")
-CHANNEL_ID = "@qo_kanali_usernamy"  # <--- Այստեղ գրիր քո ալիքի ճիշտ անունը (օրինակ՝ @znedits01)
+CHANNEL_ID = "@canabisee"  # <--- Ճիշտ ալիքի username-ը
 
 router = Router()
 
