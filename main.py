@@ -6,16 +6,17 @@ import json
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.enums import ChatMemberStatus, ParseMode
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import CommandStart
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.client.default import DefaultBotProperties
 
 # ==========================================
-# ⚙️ ԿԱՐԳԱՎՈՐՈՒՄՆԵՐ
+# ⚙️ ՀԻՄՆԱԿԱՆ ԿԱՐԳԱՎՈՐՈՒՄՆԵՐ
 # ==========================================
 TOKEN = os.getenv("BOT_TOKEN", "9197794771:AAFzNqdHgkpF86BPdTE_S01dyBfpmm_c")
-CHANNEL_ID = "@canabisee"
-CHANNEL_URL = "https://t.me/canabisee"
+CHANNEL_ID = "@canabisee"                              # Պարտադիր ալիքը
+CHANNEL_URL = "https://t.me/canabisee"                   # Պարտադիր ալիքի հղումը
+SERIES_CHANNEL_URL = "https://t.me/+dpf8YtGpNHtjZmEy"    # 🎬 ՔՈ ՍԵՐԻԱՆԵՐԻ ԱԼԻՔԻ ՀՂՈՒՄԸ
 ADMIN_ID = 6199289062
 
 router = Router()
@@ -23,7 +24,7 @@ USERS_FILE = "users_db.json"
 MEDIA_FILE = "media_db.json"
 
 # ==========================================
-# 💾 ԲԱԶԱՆԵՐԻ ԿԱՌԱՎԱՐՈՒՄ (ՈՐ ԵՐԲԵՔ ՉԿՈՐՉԻ)
+# 💾 ԲԱԶԱՆԵՐԻ ԿԱՌԱՎԱՐՈՒՄ
 # ==========================================
 def load_media() -> list:
     if os.path.exists(MEDIA_FILE):
@@ -32,14 +33,7 @@ def load_media() -> list:
                 return json.load(f)
         except Exception:
             pass
-    # Եթե դեռ ֆայլ չկա, դնում ենք հիմնական վիդեոն
-    return [
-        {
-            'type': 'video',
-            'file_id': 'BAACAgIAAxkBAAIB7Wr4LImTEWYs8gqSO2LrxFGDuZxuAAJarQACHaXBS2rgOiUNUDLnPQQ',
-            'caption': '🔥 **Վերջին Գամբիթ**\n\nԲարի դիտում ախպերներ ջան!'
-        }
-    ]
+    return []
 
 def save_media(media_list: list):
     try:
@@ -97,9 +91,24 @@ def get_sub_keyboard() -> InlineKeyboardMarkup:
         ]
     )
 
-async def send_all_media(chat_id: int, bot: Bot):
+def get_series_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🎬 Մտնել Սերիաների Ալիք", url=SERIES_CHANNEL_URL)]
+        ]
+    )
+
+async def grant_access(chat_id: int, bot: Bot):
+    await bot.send_message(
+        chat_id,
+        "✅ **Բաժանորդագրությունը հաստատված է!**\n\n"
+        "Սեղմիր ներքևի կոճակը՝ մեր փակ ալիք մտնելու և բոլոր սերիաները դիտելու համար 👇",
+        reply_markup=get_series_keyboard(),
+        parse_mode=ParseMode.MARKDOWN
+    )
+    
+    # Եթե բազայում նաև լրացուցիչ նյութեր կան գցած, դրանք էլ կուղարկի
     media_storage = load_media()
-    await bot.send_message(chat_id, "✅ **Բարի գալուստ! Ահա քեզ հասանելի նյութերը:**", parse_mode=ParseMode.MARKDOWN)
     for media in media_storage:
         try:
             if media['type'] == 'video':
@@ -132,14 +141,14 @@ async def cmd_start(message: Message, bot: Bot):
 
     if not await is_user_subscribed(user_id, bot):
         await message.answer(
-            "❌ **Խաբել չի ստացվի! Բոտից օգտվելու համար պետք է անպայման լինես մեր ալիքի անդամ:**\n\n"
-            "Նախ միացիր ալիքին, հետո սեղմիր «Ստուգել բաժանորդագրությունը»։",
+            "❌ **Խաբել չի ստացվի! Սերիաների ալիքի հղումը ստանալու համար նախ պետք է միանաս մեր գլխավոր ալիքին:**\n\n"
+            "Միացիր ալիքին և սեղմիր «Ստուգել բաժանորդագրությունը» 👇",
             reply_markup=get_sub_keyboard(),
             parse_mode=ParseMode.MARKDOWN
         )
         return
 
-    await send_all_media(message.chat.id, bot)
+    await grant_access(message.chat.id, bot)
 
 @router.callback_query(F.data == "verify_sub")
 async def callback_verify_sub(callback: CallbackQuery, bot: Bot):
@@ -151,18 +160,106 @@ async def callback_verify_sub(callback: CallbackQuery, bot: Bot):
             await callback.message.delete()
         except Exception:
             pass
-        await send_all_media(callback.message.chat.id, bot)
+        await grant_access(callback.message.chat.id, bot)
     else:
         await callback.answer(
-            "❌ Դու դեռ դուրս ես եկել ալիքից կամ միացած չես: Անպայման միացիր ալիքին!",
+            "❌ Դու դեռ չես միացել ալիքին կամ դուրս ես եկել: Անպայման միացիր @canabisee-ին!",
             show_alert=True
         )
 
 # ==========================================
-# 👑 ԱԴՄԻՆԻ ԱՆԳԱՄԻՑ ՈՒՂԱՐԿՄԱՆ ՀԱՄԱԿԱՐԳ (BROADCAST & AUTO-SAVE)
+# 👑 ԱԴՄԻՆԻ ՀԱՄԱԿԱՐԳ (BROADCAST & AUTO-SAVE)
 # ==========================================
 @router.message(F.from_user.id == ADMIN_ID)
 async def admin_broadcast(message: Message, bot: Bot):
     users = load_users()
     media_storage = load_media()
+    
+    media_type = "text"
+    fid = None
+    caption = message.caption or message.text or ""
+
+    if message.video:
+        media_type = "video"
+        fid = message.video.file_id
+    elif message.photo:
+        media_type = "photo"
+        fid = message.photo[-1].file_id
+
+    if fid:
+        new_media = {
+            'type': media_type,
+            'file_id': fid,
+            'caption': caption
+        }
+        if not any(m.get('file_id') == fid for m in media_storage):
+            media_storage.append(new_media)
+            save_media(media_storage)
+
+    status_msg = await message.answer(f"⏳ Հրապարակվում է... (Բազայում կա {len(users)} հոգի)")
+
+    sent_count = 0
+    skipped_unsub = 0
+
+    for uid in users:
+        if not await is_user_subscribed(uid, bot):
+            skipped_unsub += 1
+            continue
+
+        try:
+            if media_type == "video":
+                await bot.send_video(uid, fid, caption=caption, protect_content=True)
+            elif media_type == "photo":
+                await bot.send_photo(uid, fid, caption=caption, protect_content=True)
+            else:
+                await bot.send_message(uid, caption)
+            sent_count += 1
+            await asyncio.sleep(0.2)
+        except Exception:
+            pass
+
+    report = (
+        f"✅ **Հրապարակումն ավարտվեց!**\n\n"
+        f"📨 Հասավ ակտիվ բաժանորդներին՝ **{sent_count}** հոգու\n"
+        f"🚫 Արգելափակվեց (ալիքից դուրս եկածներ)՝ **{skipped_unsub}** հոգի\n"
+    )
+    if fid:
+        report += f"\n💾 **Նյութը նաև պահպանվեց բոտի բազայում:**"
+
+    await status_msg.edit_text(report, parse_mode=ParseMode.MARKDOWN)
+
+# ==========================================
+# 🌐 24/7 ՍԵՐՎԵՐ (RENDER)
+# ==========================================
+async def handle(request):
+    return web.Response(text="Bot is running 24/7!")
+
+async def web_server():
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.getenv("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
+async def main():
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+    bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    dp = Dispatcher()
+    dp.include_router(router)
+    
+    await web_server()
+    await bot.delete_webhook(drop_pending_updates=True)
+    
+    while True:
+        try:
+            logging.info("Բոտը միանում է...")
+            await dp.start_polling(bot)
+        except Exception as e:
+            logging.error(f"Error: {e}. Վերագործարկում 5 վայրկյանից...")
+            await asyncio.sleep(5)
+
+if __name__ == "__main__":
+    asyncio.run(main())
     
