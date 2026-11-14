@@ -11,7 +11,7 @@ from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, C
 from aiogram.client.default import DefaultBotProperties
 
 # ==========================================
-# ⚙️ ՀԻՄՆԱԿԱՆ ԿԱՐԳԱՎՈՐՈՒՄՆԵՐ
+# ⚙️ ԿԱՐԳԱՎՈՐՈՒՄՆԵՐ
 # ==========================================
 TOKEN = os.getenv("BOT_TOKEN", "9197794771:AAFzNqdHgkpF86BPdTE_S01dyBfpmm_c")
 CHANNEL_ID = "@canabisee"
@@ -20,21 +20,34 @@ ADMIN_ID = 6199289062
 
 router = Router()
 USERS_FILE = "users_db.json"
+MEDIA_FILE = "media_db.json"
 
 # ==========================================
-# 🎬 ՀԱՎԵՐԺ ՊԱՀՊԱՆՎՈՂ ՆՅՈՒԹԵՐ
+# 💾 ԲԱԶԱՆԵՐԻ ԿԱՌԱՎԱՐՈՒՄ (ՈՐ ԵՐԲԵՔ ՉԿՈՐՉԻ)
 # ==========================================
-MEDIA_STORAGE = [
-    {
-        'type': 'video',
-        'file_id': 'BAACAgIAAxkBAAIBUmr33Hx4yzjT_1P_luDi8-tIV1gAALjG2sbQwzASwLDFzrb9AhzAQADAgADaADPQQ',
-        'caption': '🔥 **Վերջին Գամբիթ — Սերիա 1**\n\nԲարի դիտում ախպերներ ջան!'
-    }
-]
+def load_media() -> list:
+    if os.path.exists(MEDIA_FILE):
+        try:
+            with open(MEDIA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    # Եթե դեռ ֆայլ չկա, դնում ենք հիմնական վիդեոն
+    return [
+        {
+            'type': 'video',
+            'file_id': 'BAACAgIAAxkBAAIB7Wr4LImTEWYs8gqSO2LrxFGDuZxuAAJarQACHaXBS2rgOiUNUDLnPQQ',
+            'caption': '🔥 **Վերջին Գամբիթ**\n\nԲարի դիտում ախպերներ ջան!'
+        }
+    ]
 
-# ==========================================
-# 💾 ԲԱԶԱՅԻ ՖՈՒՆԿՑԻԱՆԵՐ
-# ==========================================
+def save_media(media_list: list):
+    try:
+        with open(MEDIA_FILE, "w", encoding="utf-8") as f:
+            json.dump(media_list, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        logging.error(f"Media save error: {e}")
+
 def load_users() -> list:
     if os.path.exists(USERS_FILE):
         try:
@@ -49,7 +62,7 @@ def save_users(users: list):
         with open(USERS_FILE, "w", encoding="utf-8") as f:
             json.dump(users, f, ensure_ascii=False, indent=4)
     except Exception as e:
-        logging.error(f"Save error: {e}")
+        logging.error(f"Users save error: {e}")
 
 def register_user(user_id: int):
     if user_id == ADMIN_ID:
@@ -85,14 +98,15 @@ def get_sub_keyboard() -> InlineKeyboardMarkup:
     )
 
 async def send_all_media(chat_id: int, bot: Bot):
+    media_storage = load_media()
     await bot.send_message(chat_id, "✅ **Բարի գալուստ! Ահա քեզ հասանելի նյութերը:**", parse_mode=ParseMode.MARKDOWN)
-    for media in MEDIA_STORAGE:
+    for media in media_storage:
         try:
             if media['type'] == 'video':
                 await bot.send_video(
                     chat_id, 
                     media['file_id'], 
-                    caption=media['caption'], 
+                    caption=media.get('caption', ''), 
                     parse_mode=ParseMode.MARKDOWN, 
                     protect_content=True
                 )
@@ -100,7 +114,7 @@ async def send_all_media(chat_id: int, bot: Bot):
                 await bot.send_photo(
                     chat_id, 
                     media['file_id'], 
-                    caption=media['caption'], 
+                    caption=media.get('caption', ''), 
                     parse_mode=ParseMode.MARKDOWN, 
                     protect_content=True
                 )
@@ -145,86 +159,10 @@ async def callback_verify_sub(callback: CallbackQuery, bot: Bot):
         )
 
 # ==========================================
-# 👑 ԱԴՄԻՆԻ ԱՆԳԱՄԻՑ ՈՒՂԱՐԿՄԱՆ ՀԱՄԱԿԱՐԳ (BROADCAST)
+# 👑 ԱԴՄԻՆԻ ԱՆԳԱՄԻՑ ՈՒՂԱՐԿՄԱՆ ՀԱՄԱԿԱՐԳ (BROADCAST & AUTO-SAVE)
 # ==========================================
 @router.message(F.from_user.id == ADMIN_ID)
 async def admin_broadcast(message: Message, bot: Bot):
     users = load_users()
-    media_type = "text"
-    fid = None
-    caption = message.caption or message.text or ""
-
-    if message.video:
-        media_type = "video"
-        fid = message.video.file_id
-    elif message.photo:
-        media_type = "photo"
-        fid = message.photo[-1].file_id
-
-    status_msg = await message.answer(f"⏳ Հրապարակվում է... (Բազայում կա {len(users)} հոգի)")
-
-    sent_count = 0
-    skipped_unsub = 0
-
-    for uid in users:
-        if not await is_user_subscribed(uid, bot):
-            skipped_unsub += 1
-            continue
-
-        try:
-            if media_type == "video":
-                await bot.send_video(uid, fid, caption=caption, protect_content=True)
-            elif media_type == "photo":
-                await bot.send_photo(uid, fid, caption=caption, protect_content=True)
-            else:
-                await bot.send_message(uid, caption)
-            sent_count += 1
-            await asyncio.sleep(0.2)
-        except Exception:
-            pass
-
-    report = (
-        f"✅ **Հրապարակումն ավարտվեց!**\n\n"
-        f"📨 Հասավ (ակտիվ բաժանորդների)՝ **{sent_count}** հոգու\n"
-        f"🚫 Արգելափակվեց (ալիքից դուրս եկածներ)՝ **{skipped_unsub}** հոգի\n"
-    )
-    if fid:
-        report += f"\n🔑 **Ֆայլի ID (կոդում ավելացնելու համար)՝**\n`{fid}`"
-
-    await status_msg.edit_text(report, parse_mode=ParseMode.MARKDOWN)
-
-# ==========================================
-# 🌐 24/7 ՍԵՐՎԵՐ (RENDER)
-# ==========================================
-async def handle(request):
-    return web.Response(text="Bot is running 24/7!")
-
-async def web_server():
-    app = web.Application()
-    app.router.add_get("/", handle)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    port = int(os.getenv("PORT", 10000))
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-
-async def main():
-    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
-    bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    dp = Dispatcher()
-    dp.include_router(router)
-    
-    await web_server()
-    await bot.delete_webhook(drop_pending_updates=True)
-    
-    while True:
-        try:
-            logging.info("Բոտը միանում է...")
-            await dp.start_polling(bot)
-        except Exception as e:
-            logging.error(f"Error: {e}. Վերագործարկում 5 վայրկյանից...")
-            await asyncio.sleep(5)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    media_storage = load_media()
     
