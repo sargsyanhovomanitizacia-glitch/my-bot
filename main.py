@@ -79,9 +79,6 @@ async def send_media_to_user(target_chat_id: int, bot: Bot):
     for media in media_storage:
         try:
             chat_id = target_chat_id
-            from_chat_id = ADMIN_ID
-            message_id = media['sent_message_ids'].get(str(target_chat_id))
-            
             if media['type'] == 'video':
                 sent = await bot.send_video(chat_id, media['file_id'], caption=media.get('caption', ''))
             elif media['type'] == 'photo':
@@ -89,7 +86,6 @@ async def send_media_to_user(target_chat_id: int, bot: Bot):
             else:
                 sent = await bot.send_message(chat_id, media.get('text', ''))
                 
-            # Հիշում ենք ուղարկված հաղորդագրության ID-ն, որ հետո հեշտ ջնջվի
             media['sent_message_ids'][str(target_chat_id)] = sent.message_id
             await asyncio.sleep(0.3)
         except Exception as e:
@@ -133,15 +129,12 @@ async def process_check_sub(callback: CallbackQuery, bot: Bot):
     else:
         await callback.answer("❌ Դու դեռ չես միացել ալիքին: Նախ միացիր, հետո սեղմիր կրկին։", show_alert=True)
 
-# Երբ ադմինը ջնջում է հաղորդագրությունը իր մոտ, բոտը ջնջում է այն բոլորի մոտից
-@router.edited_message(F.from_user.id == ADMIN_ID)
-async def admin_edited_message(message: Message, bot: Bot):
-    pass
-
+# Բոտը լսում է միայն ադմինին, մյուսների գրածները ուղղակի անտեսվում են (չաթ չկա)
 @router.message(F.from_user.id == ADMIN_ID)
 async def admin_upload_media(message: Message, bot: Bot):
     media_storage = load_media()
     users = load_users()
+    total_users = len(users)
     
     sent_ids = {}
     media_type = 'text'
@@ -157,8 +150,9 @@ async def admin_upload_media(message: Message, bot: Bot):
     else:
         media_type = 'text'
 
-    await message.answer("💾 Հրապարակվում է և ուղարկվում բոլորին...")
+    await message.answer(f"💾 Հրապարակվում է... (Բոտում գրանցված են {total_users} բաժանորդ)")
 
+    success_count = 0
     for uid in users:
         try:
             if media_type == 'video':
@@ -169,6 +163,7 @@ async def admin_upload_media(message: Message, bot: Bot):
                 sent = await bot.send_message(uid, caption)
             
             sent_ids[str(uid)] = sent.message_id
+            success_count += 1
             await asyncio.sleep(0.3)
         except Exception as e:
             logging.error(f"Broadcast error for {uid}: {e}")
@@ -184,7 +179,7 @@ async def admin_upload_media(message: Message, bot: Bot):
     media_storage.append(media_data)
     save_media(media_storage)
     
-    await message.answer("🚀 Հաջողությամբ ուղարկվեց բոլորին!")
+    await message.answer(f"🚀 Հաջողությամբ ուղարկվեց!\n👥 Ընդհանուր բաժանորդների քանակը բոտում: **{total_users}** հոգի (հասավ {success_count}-ին):", parse_mode=ParseMode.MARKDOWN)
 
 async def handle(request):
     return web.Response(text="Bot is running 24/7!")
@@ -216,4 +211,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-        
+    
