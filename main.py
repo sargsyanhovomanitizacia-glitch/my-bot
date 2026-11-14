@@ -2,7 +2,6 @@ import os
 import asyncio
 import logging
 import sys
-import json
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.enums import ChatMemberStatus
@@ -12,27 +11,15 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
 TOKEN = os.getenv("BOT_TOKEN", "9197794771:AAFzNqdHgkpF86BPdTE_S01dyBfpmm_c")
-CHANNEL_ID = "@canabisee"  # <--- Ալիքի անունը ուղղակի այսպես
-ADMIN_ID = 6199289062    # <--- ՔՈ ՃԻՇՏ ID-Ն
+CHANNEL_ID = "@canabisee"
+ADMIN_ID = 6199289062  # <--- ՔՈ ՃԻՇՏ ID-Ն
 
 router = Router()
-DB_FILE = "media_data.json"
 
-def load_media():
-    if os.path.exists(DB_FILE):
-        try:
-            with open(DB_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return []
-
-def save_media(media_list):
-    try:
-        with open(DB_FILE, "w", encoding="utf-8") as f:
-            json.dump(media_list, f, ensure_ascii=False, indent=4)
-    except Exception as e:
-        logging.error(f"Save error: {e}")
+# Այստեղ հավերժ պահպանվում են նյութերը, որ Render-ի վերագործարկումից չկորչեն
+MEDIA_STORAGE = [
+    # { 'type': 'video', 'file_id': 'ԱՅՍՏԵՂ_ԿԳՐՎԻ_FILE_ID_Ն', 'caption': 'Սերիա 1' }
+]
 
 async def check_subscription(user_id: int, bot: Bot) -> bool:
     if user_id == ADMIN_ID:
@@ -46,13 +33,12 @@ async def check_subscription(user_id: int, bot: Bot) -> bool:
     return False
 
 async def send_media_to_user(target):
-    media_storage = load_media()
-    if not media_storage:
+    if not MEDIA_STORAGE:
         await target.answer("✅ Բարի գալուստ! Բայց առայժմ նյութեր չկան:")
         return
     
     await target.answer("✅ Բարի գալուստ! Ահա քեզ հասանելի նյութերը:")
-    for media in media_storage:
+    for media in MEDIA_STORAGE:
         if media['type'] == 'video':
             await target.answer_video(media['file_id'], caption=media.get('caption', ''))
         elif media['type'] == 'photo':
@@ -94,15 +80,16 @@ async def process_check_sub(callback: CallbackQuery, bot: Bot):
 
 @router.message(F.from_user.id == ADMIN_ID)
 async def admin_upload_media(message: Message):
-    media_storage = load_media()
     if message.video:
-        media_storage.append({'type': 'video', 'file_id': message.video.file_id, 'caption': message.caption})
-        save_media(media_storage)
-        await message.answer("💾 Վիդեոն հաջողությամբ պահպանվեց և հասանելի դարձավ բոլորին!")
+        fid = message.video.file_id
+        cap = message.caption or ''
+        logging.info(f"VIDEO FILE_ID: {fid}")
+        await message.answer(f"💾 Վիդեոն պահպանվեց!\n\nՔո file_id-ն (պահպանիր կամ գրիր կոդի մեջ):\n`{fid}`", parse_mode=ParseMode.MARKDOWN)
     elif message.photo:
-        media_storage.append({'type': 'photo', 'file_id': message.photo[-1].file_id, 'caption': message.caption})
-        save_media(media_storage)
-        await message.answer("💾 Նկարը հաջողությամբ պահպանվեց և հասանելի դարձավ բոլորին!")
+        fid = message.photo[-1].file_id
+        cap = message.caption or ''
+        logging.info(f"PHOTO FILE_ID: {fid}")
+        await message.answer(f"💾 Նկարը պահպանվեց!\n\nՔո file_id-ն:\n`{fid}`", parse_mode=ParseMode.MARKDOWN)
     else:
         await message.answer("Ախպեր ջան, միայն նկար կամ վիդեո ուղարկիր:")
 
@@ -132,7 +119,7 @@ async def main():
             await dp.start_polling(bot)
         except Exception as e:
             logging.error(f"Error: {e}. Վերագործարկում 5 վայրկյանից...")
-            await asyncio.sleep(5)
+            asyncio.sleep(5)
 
 if __name__ == "__main__":
     asyncio.run(main())
