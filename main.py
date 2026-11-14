@@ -16,9 +16,13 @@ ADMIN_ID = 6199289062  # <--- ՔՈ ՃԻՇՏ ID-Ն
 
 router = Router()
 
-# Այստեղ հավերժ պահպանվում են նյութերը, որ Render-ի վերագործարկումից չկորչեն
+# 📌 Նյութերը հավերժ դրված են այստեղ, ոչ մի դատարկ բան չկա
 MEDIA_STORAGE = [
-    # { 'type': 'video', 'file_id': 'ԱՅՍՏԵՂ_ԿԳՐՎԻ_FILE_ID_Ն', 'caption': 'Սերիա 1' }
+    {
+        'type': 'video', 
+        'file_id': 'BAACAgIAAxkBAAI... (քո վիդեոյի ֆայլի ID-ն)', 
+        'caption': 'Սերիա 1'
+    }
 ]
 
 async def check_subscription(user_id: int, bot: Bot) -> bool:
@@ -33,10 +37,6 @@ async def check_subscription(user_id: int, bot: Bot) -> bool:
     return False
 
 async def send_media_to_user(target):
-    if not MEDIA_STORAGE:
-        await target.answer("✅ Բարի գալուստ! Բայց առայժմ նյութեր չկան:")
-        return
-    
     await target.answer("✅ Բարի գալուստ! Ահա քեզ հասանելի նյութերը:")
     for media in MEDIA_STORAGE:
         if media['type'] == 'video':
@@ -82,14 +82,10 @@ async def process_check_sub(callback: CallbackQuery, bot: Bot):
 async def admin_upload_media(message: Message):
     if message.video:
         fid = message.video.file_id
-        cap = message.caption or ''
-        logging.info(f"VIDEO FILE_ID: {fid}")
-        await message.answer(f"💾 Վիդեոն պահպանվեց!\n\nՔո file_id-ն (պահպանիր կամ գրիր կոդի մեջ):\n`{fid}`", parse_mode=ParseMode.MARKDOWN)
+        await message.answer(f"💾 Վիդեոն ֆիքսվեց:\n`{fid}`", parse_mode=ParseMode.MARKDOWN)
     elif message.photo:
         fid = message.photo[-1].file_id
-        cap = message.caption or ''
-        logging.info(f"PHOTO FILE_ID: {fid}")
-        await message.answer(f"💾 Նկարը պահպանվեց!\n\nՔո file_id-ն:\n`{fid}`", parse_mode=ParseMode.MARKDOWN)
+        await message.answer(f"💾 Նկարը ֆիքսվեց:\n`{fid}`", parse_mode=ParseMode.MARKDOWN)
     else:
         await message.answer("Ախպեր ջան, միայն նկար կամ վիդեո ուղարկիր:")
 
@@ -119,8 +115,7 @@ async def main():
             await dp.start_polling(bot)
         except Exception as e:
             logging.error(f"Error: {e}. Վերագործարկում 5 վայրկյանից...")
-            asyncio.sleep(5)
+            await asyncio.sleep(5)
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
