@@ -1,6 +1,8 @@
 import os
 import asyncio
 import logging
+import sys
+from aiohttp import web
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.enums import ChatMemberStatus
 from aiogram.filters import CommandStart
@@ -10,11 +12,9 @@ from aiogram.enums import ParseMode
 
 TOKEN = os.getenv("BOT_TOKEN", "9197794771:AAFzNqdHgkpF86BPdTE_S01dyBfpmm_c")
 CHANNEL_ID = -1006199289062  # Ալիքի ID-ն
-ADMIN_ID = 123456789  # <--- ԱՅՍՏԵՂ ԳՐԻՐ ՔՈ TELEGRAM-Ի ԹՎԱՅԻՆ ID-Ն (օրինակ՝ 123456789)
+ADMIN_ID = 000000000  # <--- ԱՅՍՏԵՂ ԳՐԻՐ ՔՈ TELEGRAM-Ի ԹՎԱՅԻՆ ID-Ն
 
 router = Router()
-
-# Այստեղ կհավաքվեն քո ուղարկած նյութերը
 MEDIA_STORAGE = []
 
 async def check_subscription(user_id: int, bot: Bot) -> bool:
@@ -26,7 +26,6 @@ async def check_subscription(user_id: int, bot: Bot) -> bool:
         pass
     return False
 
-# Բոտի սկիզբը (/start)
 @router.message(CommandStart())
 async def cmd_start(message: Message, bot: Bot):
     user_id = message.from_user.id
@@ -47,7 +46,6 @@ async def cmd_start(message: Message, bot: Bot):
     else:
         await send_all_media(message)
 
-# Նյութերը օգտատիրոջն ուղարկելու ֆունկցիա
 async def send_all_media(target_message):
     if not MEDIA_STORAGE:
         await target_message.answer("✅ Բարի գալուստ! Դու արդեն բաժանորդագրված ես։ Առայժմ նոր նյութեր չկան։")
@@ -60,14 +58,17 @@ async def send_all_media(target_message):
         elif media['type'] == 'photo':
             await target_message.answer_photo(media['file_id'], caption=media.get('caption', ''))
 
-# Բաժանորդագրության ստուգման կոճակը
 @router.callback_query(F.data == "check_sub")
 async def process_check_sub(callback: CallbackQuery, bot: Bot):
     user_id = callback.from_user.id
     is_subscribed = await check_subscription(user_id, bot)
     
     if is_subscribed:
-        await callback.message.delete()
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+            
         if not MEDIA_STORAGE:
             await callback.message.answer("✅ **Շնորհավորում եմ!** Դու հաջողությամբ միացար ալիքին:\n\nԱռայժմ նյութեր չկան:")
         else:
@@ -80,7 +81,6 @@ async def process_check_sub(callback: CallbackQuery, bot: Bot):
     else:
         await callback.answer("❌ Դու դեռ չես միացել ալիքին: Խնդրում ենք նախ միանալ, հետո սեղմել կրկին։", show_alert=True)
 
-# ՄԻԱՅՆ ԱԴՄԻՆԻ ՀԱՄԱՐ. Երբ դու վիդեո կամ նկար ես ուղարկում բոտին
 @router.message(F.from_user.id == ADMIN_ID)
 async def admin_upload_media(message: Message):
     if message.video:
@@ -92,10 +92,27 @@ async def admin_upload_media(message: Message):
     else:
         await message.answer("Ախպեր ջան, միայն վիդեո կամ նկար ուղարկիր, որ պահպանեմ։")
 
+# Վեբ սերվեր Render-ի համար, որ բոտը չքնի ու 24/7 աշխատի
+async def handle(request):
+    return web.Response(text="Bot is running!")
+
+async def web_server():
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.getenv("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
 async def main():
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
     bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
     dp.include_router(router)
+    
+    # Միացնում ենք վեբ սերվերը
+    await web_server()
     
     while True:
         try:
@@ -106,7 +123,5 @@ async def main():
             await asyncio.sleep(5)
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, stream=sys.stdout if 'sys' in globals() else None)
-    import sys
     asyncio.run(main())
     
