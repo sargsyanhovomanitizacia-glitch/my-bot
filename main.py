@@ -18,12 +18,15 @@ router = Router()
 MEDIA_STORAGE = []
 
 async def check_subscription(user_id: int, bot: Bot) -> bool:
+    # Եթե դու ադմինն ես, միանգամից թողնում ենք անցնի, որ չարգելափակի
+    if user_id == ADMIN_ID:
+        return True
     try:
         member = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
-        if member.status not in [ChatMemberStatus.LEFT, ChatMemberStatus.KICKED]:
+        if member.status in [ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR]:
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        logging.error(f"Սխալ բաժանորդագրությունը ստուգելիս: {e}")
     return False
 
 @router.message(CommandStart())
@@ -92,7 +95,6 @@ async def admin_upload_media(message: Message):
     else:
         await message.answer("Ախպեր ջան, միայն վիդեո կամ նկար ուղարկիր, որ պահպանեմ։")
 
-# Վեբ սերվեր Render-ի համար, որ բոտը չքնի ու 24/7 աշխատի
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -111,7 +113,6 @@ async def main():
     dp = Dispatcher()
     dp.include_router(router)
     
-    # Միացնում ենք վեբ սերվերը
     await web_server()
     
     while True:
