@@ -12,8 +12,8 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
 TOKEN = os.getenv("BOT_TOKEN", "9197794771:AAFzNqdHgkpF86BPdTE_S01dyBfpmm_c")
-CHANNEL_ID = -1006199289062
-ADMIN_ID = 6199289062  # <--- ՔՈ ՃԻՇՏ ID-Ն
+CHANNEL_ID = "@canabisee"  # <--- Ալիքի անունը ուղղակի այսպես
+ADMIN_ID = 6199289062    # <--- ՔՈ ՃԻՇՏ ID-Ն
 
 router = Router()
 DB_FILE = "media_data.json"
@@ -39,13 +39,10 @@ async def check_subscription(user_id: int, bot: Bot) -> bool:
         return True
     try:
         member = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
-        # Եթե մարդը անդամ է, ադմին կամ ստեղծող
         if member.status in [ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR]:
             return True
     except Exception as e:
         logging.error(f"Subscription check error: {e}")
-        # Եթե ինչ-որ կապի խնդիր կա, որպեսզի օգտատիրոջը անհիմն չկանգնեցնի, թույլ ենք տալիս կամ ստուգում ենք ուղղակի
-        pass
     return False
 
 async def send_media_to_user(target):
