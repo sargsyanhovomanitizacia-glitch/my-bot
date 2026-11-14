@@ -23,7 +23,6 @@ USERS_FILE = "users_db.json"
 
 # ==========================================
 # 🎬 ՄԵԴԻԱ ԲԱԶԱ (Հավերժ պահպանվող սերիաներ)
-# Նոր սերիա ավելացնելու համար ուղղակի կրկնօրինակիր ներքևի բլոկը
 # ==========================================
 MEDIA_STORAGE = [
     {
@@ -36,7 +35,7 @@ MEDIA_STORAGE = [
 ]
 
 # ==========================================
-# 💾 ՕԳՏԱՏԵՐԵՐԻ ԲԱԶԱՅԻ ԿԱՌԱՎԱՐՈՒՄ
+# 💾 ՕԳՏԱՏԵՐԵՐԻ ԲԱԶԱ
 # ==========================================
 def load_users() -> list:
     if os.path.exists(USERS_FILE):
@@ -63,7 +62,7 @@ def register_user(user_id: int):
         save_users(users)
 
 # ==========================================
-# 🛡️ ՀԱԿԱԽԱԲԵԱԿԱՆ ՍՏՈՒԳՈՒՄ (REAL-TIME JOIN GATE)
+# 🛡️ ՀԱԿԱԽԱԲԵԱԿԱՆ ՍՏՈՒԳՈՒՄ
 # ==========================================
 async def is_user_subscribed(user_id: int, bot: Bot) -> bool:
     if user_id == ADMIN_ID:
@@ -89,7 +88,6 @@ def get_sub_keyboard() -> InlineKeyboardMarkup:
 
 def get_main_menu_keyboard() -> InlineKeyboardMarkup:
     buttons = []
-    # Ավտոմատ ստեղծում է կոճակ ամեն մի սերիայի համար
     for item in MEDIA_STORAGE:
         buttons.append([InlineKeyboardButton(text=item['title'], callback_data=f"watch_{item['id']}")])
     
@@ -97,8 +95,18 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
     buttons.append([InlineKeyboardButton(text="📢 Մեր պաշտոնական ալիքը", url=CHANNEL_URL)])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
+async def send_media_item(chat_id: int, item: dict, bot: Bot):
+    # protect_content=True -> պաշտպանում է գողանալուց / forward անելուց
+    try:
+        if item['type'] == 'video':
+            await bot.send_video(chat_id, item['file_id'], caption=item['caption'], parse_mode=ParseMode.MARKDOWN, protect_content=True)
+        elif item['type'] == 'photo':
+            await bot.send_photo(chat_id, item['file_id'], caption=item['caption'], parse_mode=ParseMode.MARKDOWN, protect_content=True)
+    except Exception as e:
+        logging.error(f"Send error: {e}")
+
 # ==========================================
-# 🚀 ՀԻՄՆԱԿԱՆ ՀՐԱՄԱՆՆԵՐ ԵՎ ՄԵՆՅՈՒ
+# 🚀 ՀՐԱՄԱՆՆԵՐ ԵՎ ՄԵՆՅՈՒ
 # ==========================================
 @router.message(CommandStart())
 async def cmd_start(message: Message, bot: Bot):
@@ -115,12 +123,16 @@ async def cmd_start(message: Message, bot: Bot):
         )
         return
 
+    # Անմիջապես բերում ենք ողջույնը, մենյուն և միանգամից առաջին սերիան
     await message.answer(
         f"👋 Բարի գալուստ, **{message.from_user.first_name}**!\n\n"
-        "Ընտրիր ցանկալի սերիան ներքևի մենյուից՝ դիտելու համար 👇",
+        "Ահա քեզ հասանելի նյութերը 👇",
         reply_markup=get_main_menu_keyboard(),
         parse_mode=ParseMode.MARKDOWN
     )
+    for item in MEDIA_STORAGE:
+        await send_media_item(message.chat.id, item, bot)
+        await asyncio.sleep(0.3)
 
 @router.callback_query(F.data == "verify_sub")
 async def callback_verify_sub(callback: CallbackQuery, bot: Bot):
@@ -134,10 +146,13 @@ async def callback_verify_sub(callback: CallbackQuery, bot: Bot):
             pass
         await callback.message.answer(
             "✅ **Բաժանորդագրությունը հաստատված է!**\n\n"
-            "Ընտրիր սերիան ներքևից 👇",
+            "Ահա քեզ հասանելի նյութերը 👇",
             reply_markup=get_main_menu_keyboard(),
             parse_mode=ParseMode.MARKDOWN
         )
+        for item in MEDIA_STORAGE:
+            await send_media_item(callback.message.chat.id, item, bot)
+            await asyncio.sleep(0.3)
     else:
         await callback.answer(
             "❌ Դու դեռ չես միացել ալիքին կամ դուրս ես եկել։ Նախ միացիր @canabisee-ին!",
@@ -145,13 +160,12 @@ async def callback_verify_sub(callback: CallbackQuery, bot: Bot):
         )
 
 # ==========================================
-# 🎥 ՍԵՐԻԱՆԵՐԻ ԴԻՏՈՒՄ (ՊԱՇՏՊԱՆՎԱԾ ՌԵԺԻՄՈՎ)
+# 🎥 ԿՈՃԱԿՆԵՐՈՎ ԴԻՏՈՒՄ ԵՎ ԱՆՏԻ-ՉԻԹ
 # ==========================================
 @router.callback_query(F.data.startswith("watch_"))
 async def callback_watch_media(callback: CallbackQuery, bot: Bot):
     user_id = callback.from_user.id
 
-    # Ամեն սեղմելուց ստուգում ենք՝ հո չի լքել ալիքը (Anti-Cheat)
     if not await is_user_subscribed(user_id, bot):
         try:
             await callback.message.delete()
@@ -168,57 +182,18 @@ async def callback_watch_media(callback: CallbackQuery, bot: Bot):
     action = callback.data.replace("watch_", "")
     await callback.answer("⏳ Ուղարկվում է...")
 
-    # protect_content=True -> արգելում է ֆայլը forward անել կամ քաշել (եթե ուզես թույլ տալ, դարձրու False)
-    PROTECT = True
-
     if action == "all":
         for item in MEDIA_STORAGE:
-            try:
-                if item['type'] == 'video':
-                    await bot.send_video(
-                        callback.message.chat.id,
-                        item['file_id'],
-                        caption=item['caption'],
-                        parse_mode=ParseMode.MARKDOWN,
-                        protect_content=PROTECT
-                    )
-                elif item['type'] == 'photo':
-                    await bot.send_photo(
-                        callback.message.chat.id,
-                        item['file_id'],
-                        caption=item['caption'],
-                        parse_mode=ParseMode.MARKDOWN,
-                        protect_content=PROTECT
-                    )
-                await asyncio.sleep(0.5)
-            except Exception as e:
-                logging.error(f"Error sending media: {e}")
+            await send_media_item(callback.message.chat.id, item, bot)
+            await asyncio.sleep(0.3)
     else:
         for item in MEDIA_STORAGE:
             if item['id'] == action:
-                try:
-                    if item['type'] == 'video':
-                        await bot.send_video(
-                            callback.message.chat.id,
-                            item['file_id'],
-                            caption=item['caption'],
-                            parse_mode=ParseMode.MARKDOWN,
-                            protect_content=PROTECT
-                        )
-                    elif item['type'] == 'photo':
-                        await bot.send_photo(
-                            callback.message.chat.id,
-                            item['file_id'],
-                            caption=item['caption'],
-                            parse_mode=ParseMode.MARKDOWN,
-                            protect_content=PROTECT
-                        )
-                except Exception as e:
-                    logging.error(f"Error sending single media: {e}")
+                await send_media_item(callback.message.chat.id, item, bot)
                 break
 
 # ==========================================
-# 👑 ԱԴՄԻՆԻ ՎԱՀԱՆԱԿ ԵՎ ՈՒՂԻՂ ՀՐԱՊԱՐԱԿՈՒՄ
+# 👑 ԱԴՄԻՆԻ ՎԱՀԱՆԱԿ ԵՎ ԲՐՈԱԴՔԱՍԹ
 # ==========================================
 @router.message(Command("admin"), F.from_user.id == ADMIN_ID)
 async def cmd_admin(message: Message):
@@ -227,12 +202,12 @@ async def cmd_admin(message: Message):
         f"👑 **Ադմինի Կառավարման Վահանակ**\n\n"
         f"👥 Գրանցված օգտատերեր՝ **{len(users)}** հոգի\n"
         f"🎬 Ակտիվ սերիաներ կոդում՝ **{len(MEDIA_STORAGE)}** հատ\n\n"
-        "📌 *Հուշում.* Ուղարկիր ինձ ցանկացած վիդեո, նկար կամ տեքստ, և ես այն **ակնթարթորեն կուղարկեմ բոլոր բաժանորդներին** (միայն նրանց, ովքեր ալիքում են), ինչպես նաև կտամ կոդի համար ID-ն։",
+        "📌 *Հուշում.* Ուղարկիր ինձ ցանկացած վիդեո կամ նկար, և ես այն անմիջապես կուղարկեմ բոլոր ակտիվ բաժանորդներին ու կտամ դրա ֆայլի ID-ն։",
         parse_mode=ParseMode.MARKDOWN
     )
 
 @router.message(F.from_user.id == ADMIN_ID)
-async def admin_broadcast_and_get_id(message: Message, bot: Bot):
+async def admin_broadcast(message: Message, bot: Bot):
     users = load_users()
     media_type = "text"
     fid = None
@@ -245,13 +220,12 @@ async def admin_broadcast_and_get_id(message: Message, bot: Bot):
         media_type = "photo"
         fid = message.photo[-1].file_id
 
-    status_msg = await message.answer(f"⏳ Սկսում եմ ուղարկել {len(users)} օգտատիրոջ...")
+    status_msg = await message.answer(f"⏳ Հրապարակվում է {len(users)} օգտատիրոջ համար...")
 
     sent_count = 0
     skipped_unsub = 0
 
     for uid in users:
-        # Ստուգում ենք՝ արդյոք տվյալ մարդը դեռ ալիքում է, նոր ուղարկում ենք
         if not await is_user_subscribed(uid, bot):
             skipped_unsub += 1
             continue
@@ -271,7 +245,7 @@ async def admin_broadcast_and_get_id(message: Message, bot: Bot):
     report = (
         f"✅ **Հրապարակումն ավարտվեց!**\n\n"
         f"📨 Հասավ՝ **{sent_count}** ակտիվ բաժանորդի\n"
-        f"🚫 Արգելափակվեց (ալիքից դուրս եկածներ)՝ **{skipped_unsub}** հոգի\n"
+        f"🚫 Բաց թողնվեց (ալիքից դուրս եկածներ)՝ **{skipped_unsub}** հոգի\n"
     )
     if fid:
         report += f"\n🔑 **Ֆայլի ID (կոդում ավելացնելու համար)՝**\n`{fid}`"
@@ -279,7 +253,7 @@ async def admin_broadcast_and_get_id(message: Message, bot: Bot):
     await status_msg.edit_text(report, parse_mode=ParseMode.MARKDOWN)
 
 # ==========================================
-# 🌐 24/7 ՎԵԲ ՍԵՐՎԵՐ (RENDER-Ի ՀԱՄԱՐ)
+# 🌐 24/7 ՎԵԲ ՍԵՐՎԵՐ (RENDER)
 # ==========================================
 async def handle(request):
     return web.Response(text="Bot is online and running 24/7!")
@@ -312,4 +286,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-        
+    
