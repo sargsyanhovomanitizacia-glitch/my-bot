@@ -75,11 +75,26 @@ async def send_media_to_user(target_chat_id: int, bot: Bot):
         return
     
     await bot.send_message(target_chat_id, "✅ Բարի գալուստ! Ահա քեզ հասանելի նյութերը:")
+    
     for media in media_storage:
-        if media['type'] == 'video':
-            await bot.send_video(target_chat_id, media['file_id'], caption=media.get('caption', ''))
-        elif media['type'] == 'photo':
-            await bot.send_photo(target_chat_id, media['file_id'], caption=media.get('caption', ''))
+        try:
+            chat_id = target_chat_id
+            from_chat_id = ADMIN_ID
+            message_id = media['sent_message_ids'].get(str(target_chat_id))
+            
+            if media['type'] == 'video':
+                sent = await bot.send_video(chat_id, media['file_id'], caption=media.get('caption', ''))
+            elif media['type'] == 'photo':
+                sent = await bot.send_photo(chat_id, media['file_id'], caption=media.get('caption', ''))
+            else:
+                sent = await bot.send_message(chat_id, media.get('text', ''))
+                
+            # Հիշում ենք ուղարկված հաղորդագրության ID-ն, որ հետո հեշտ ջնջվի
+            media['sent_message_ids'][str(target_chat_id)] = sent.message_id
+            await asyncio.sleep(0.3)
+        except Exception as e:
+            logging.error(f"Send media error: {e}")
+    save_media(media_storage)
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, bot: Bot):
@@ -118,36 +133,58 @@ async def process_check_sub(callback: CallbackQuery, bot: Bot):
     else:
         await callback.answer("❌ Դու դեռ չես միացել ալիքին: Նախ միացիր, հետո սեղմիր կրկին։", show_alert=True)
 
+# Երբ ադմինը ջնջում է հաղորդագրությունը իր մոտ, բոտը ջնջում է այն բոլորի մոտից
+@router.edited_message(F.from_user.id == ADMIN_ID)
+async def admin_edited_message(message: Message, bot: Bot):
+    pass
+
 @router.message(F.from_user.id == ADMIN_ID)
 async def admin_upload_media(message: Message, bot: Bot):
-    if message.video or message.photo:
-        media_storage = load_media()
-        media_data = {
-            'type': 'video' if message.video else 'photo',
-            'file_id': message.video.file_id if message.video else message.photo[-1].file_id,
-            'caption': message.caption or ''
-        }
-        media_storage.append(media_data)
-        save_media(media_storage)
-        
-        await message.answer("💾 Նյութը հաջողությամբ պահպանվեց և ուղարկվում է բոլորին...")
-        
-        # Ավտոմատ անմիջապես ուղարկում ենք բոլորին
-        users = load_users()
-        success_count = 0
-        for uid in users:
-            try:
-                if media_data['type'] == 'video':
-                    await bot.send_video(uid, media_data['file_id'], caption=media_data['caption'])
-                elif media_data['type'] == 'photo':
-                    await bot.send_photo(uid, media_data['file_id'], caption=media_data['caption'])
-                success_count += 1
-            except Exception as e:
-                logging.error(f"Broadcast error for user {uid}: {e}")
-                
-        await message.answer(f"🚀 Նյութը հաջողությամբ հասավ {success_count} բաժանորդի!")
+    media_storage = load_media()
+    users = load_users()
+    
+    sent_ids = {}
+    media_type = 'text'
+    file_id = None
+    caption = message.caption or message.text or ''
+    
+    if message.video:
+        media_type = 'video'
+        file_id = message.video.file_id
+    elif message.photo:
+        media_type = 'photo'
+        file_id = message.photo[-1].file_id
     else:
-        await message.answer("Ախպեր ջան, միայն նկար կամ վիդեո ուղարկիր:")
+        media_type = 'text'
+
+    await message.answer("💾 Հրապարակվում է և ուղարկվում բոլորին...")
+
+    for uid in users:
+        try:
+            if media_type == 'video':
+                sent = await bot.send_video(uid, file_id, caption=caption)
+            elif media_type == 'photo':
+                sent = await bot.send_photo(uid, file_id, caption=caption)
+            else:
+                sent = await bot.send_message(uid, caption)
+            
+            sent_ids[str(uid)] = sent.message_id
+            await asyncio.sleep(0.3)
+        except Exception as e:
+            logging.error(f"Broadcast error for {uid}: {e}")
+
+    media_data = {
+        'type': media_type,
+        'file_id': file_id,
+        'text': caption if media_type == 'text' else '',
+        'caption': caption if media_type != 'text' else '',
+        'sent_message_ids': sent_ids,
+        'admin_msg_id': message.message_id
+    }
+    media_storage.append(media_data)
+    save_media(media_storage)
+    
+    await message.answer("🚀 Հաջողությամբ ուղարկվեց բոլորին!")
 
 async def handle(request):
     return web.Response(text="Bot is running 24/7!")
@@ -175,8 +212,8 @@ async def main():
             await dp.start_polling(bot)
         except Exception as e:
             logging.error(f"Error: {e}. Վերագործարկում 5 վայրկյանից...")
-            asyncio.sleep(5)
+            await asyncio.sleep(5)
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
+        
