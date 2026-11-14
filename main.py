@@ -2,7 +2,6 @@ import os
 import asyncio
 import logging
 import sys
-import json
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.enums import ChatMemberStatus
@@ -16,52 +15,22 @@ CHANNEL_ID = "@canabisee"
 ADMIN_ID = 6199289062  # <--- ՔՈ ՃԻՇՏ ID-Ն
 
 router = Router()
-DB_FILE = "media_data.json"
-USERS_FILE = "users_data.json"
 
-def load_media():
-    if os.path.exists(DB_FILE):
-        try:
-            with open(DB_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return []
-
-def save_media(media_list):
-    try:
-        with open(DB_FILE, "w", encoding="utf-8") as f:
-            json.dump(media_list, f, ensure_ascii=False, indent=4)
-    except Exception as e:
-        logging.error(f"Save error: {e}")
-
-def load_users():
-    if os.path.exists(USERS_FILE):
-        try:
-            with open(USERS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return []
-
-def save_users(users_list):
-    try:
-        with open(USERS_FILE, "w", encoding="utf-8") as f:
-            json.dump(users_list, f, ensure_ascii=False, indent=4)
-    except Exception as e:
-        pass
-
-def add_user(user_id):
-    users = load_users()
-    if user_id not in users and user_id != ADMIN_ID:
-        users.append(user_id)
-        save_users(users)
+# 📌 ՎԻԴԵՈՆ ՀԱՎԵՐԺ ԳՐՎԱԾ Է ԱՅՍՏԵՂ
+MEDIA_STORAGE = [
+    {
+        'type': 'video', 
+        'file_id': 'BAACAgIAAxkBAAIBUmr33Hx4yzjT_1P_luDi8-tIV1gAALjG2sbQwzASwLDFzrb9AhzAQADAgADaADPQQ', 
+        'caption': 'Սերիա 1'
+    }
+]
 
 async def check_subscription(user_id: int, bot: Bot) -> bool:
     if user_id == ADMIN_ID:
         return True
     try:
         member = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
+        # Ստուգում ենք, որ մարդը իրոք ալիքի անդամ է (չի լքել այն)
         if member.status in [ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR]:
             return True
     except Exception as e:
@@ -69,34 +38,22 @@ async def check_subscription(user_id: int, bot: Bot) -> bool:
     return False
 
 async def send_media_to_user(target_chat_id: int, bot: Bot):
-    media_storage = load_media()
-    if not media_storage:
-        await bot.send_message(target_chat_id, "✅ Բարի գալուստ! Բայց առայժմ նյութեր չկան:")
-        return
-    
     await bot.send_message(target_chat_id, "✅ Բարի գալուստ! Ահա քեզ հասանելի նյութերը:")
-    
-    for media in media_storage:
+    for media in MEDIA_STORAGE:
         try:
-            chat_id = target_chat_id
             if media['type'] == 'video':
-                sent = await bot.send_video(chat_id, media['file_id'], caption=media.get('caption', ''))
+                await bot.send_video(target_chat_id, media['file_id'], caption=media.get('caption', ''))
             elif media['type'] == 'photo':
-                sent = await bot.send_photo(chat_id, media['file_id'], caption=media.get('caption', ''))
-            else:
-                sent = await bot.send_message(chat_id, media.get('text', ''))
-                
-            media['sent_message_ids'][str(target_chat_id)] = sent.message_id
+                await bot.send_photo(target_chat_id, media['file_id'], caption=media.get('caption', ''))
             await asyncio.sleep(0.3)
         except Exception as e:
             logging.error(f"Send media error: {e}")
-    save_media(media_storage)
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, bot: Bot):
     user_id = message.from_user.id
-    add_user(user_id)
     
+    # 📌 ԱՄԵՆ ԱՆԳԱՄ ՍՏՈՒԳՈՒՄ ԵՆՔ՝ ԻՐՈ՞Ք ԱԼԻՔՈՒՄ Է, ԹԵ ԽԱԲՈՒՄ Է
     is_subscribed = await check_subscription(user_id, bot)
     
     if not is_subscribed:
@@ -107,7 +64,7 @@ async def cmd_start(message: Message, bot: Bot):
             ]
         )
         await message.answer(
-            "❌ **Բոտից օգտվելու համար պետք է բաժանորդագրվես մեր ալիքին:**\n\nԲաժանորդագրվիր ու սեղմիր «Ստուգել բաժանորդագրությունը» կոճակը։",
+            "❌ **Խաբել չի ստացվի! Բոտից օգտվելու համար պետք է անպայման լինես մեր ալիքի անդամ:**\n\nՆախ միացիր ալիքին, հետո սեղմիր «Ստուգել բաժանորդագրությունը»։",
             reply_markup=keyboard,
             parse_mode=ParseMode.MARKDOWN
         )
@@ -117,7 +74,8 @@ async def cmd_start(message: Message, bot: Bot):
 @router.callback_query(F.data == "check_sub")
 async def process_check_sub(callback: CallbackQuery, bot: Bot):
     user_id = callback.from_user.id
-    add_user(user_id)
+    
+    # 📌 ԿՈՃԱԿԻ ՎՐԱ ՍԵՂՄԵԼԻՍ ԵԼՍ ՍՏՈՒԳՈՒՄ ԵՆՔ
     is_subscribed = await check_subscription(user_id, bot)
     
     if is_subscribed:
@@ -127,59 +85,15 @@ async def process_check_sub(callback: CallbackQuery, bot: Bot):
             pass
         await send_media_to_user(callback.message.chat.id, bot)
     else:
-        await callback.answer("❌ Դու դեռ չես միացել ալիքին: Նախ միացիր, հետո սեղմիր կրկին։", show_alert=True)
+        await callback.answer("❌ Դու դեռ դուրս եկել ալիքից կամ միացած չես: Անպայման միացիր ալիքին, որ բոտը բացվի։", show_alert=True)
 
-# Բոտը լսում է միայն ադմինին, մյուսների գրածները ուղղակի անտեսվում են (չաթ չկա)
 @router.message(F.from_user.id == ADMIN_ID)
 async def admin_upload_media(message: Message, bot: Bot):
-    media_storage = load_media()
-    users = load_users()
-    total_users = len(users)
-    
-    sent_ids = {}
-    media_type = 'text'
-    file_id = None
-    caption = message.caption or message.text or ''
-    
-    if message.video:
-        media_type = 'video'
-        file_id = message.video.file_id
-    elif message.photo:
-        media_type = 'photo'
-        file_id = message.photo[-1].file_id
+    if message.video or message.photo:
+        fid = message.video.file_id if message.video else message.photo[-1].file_id
+        await message.answer(f"💾 Ադմին, ֆայլը հաստատված է:\n`{fid}`", parse_mode=ParseMode.MARKDOWN)
     else:
-        media_type = 'text'
-
-    await message.answer(f"💾 Հրապարակվում է... (Բոտում գրանցված են {total_users} բաժանորդ)")
-
-    success_count = 0
-    for uid in users:
-        try:
-            if media_type == 'video':
-                sent = await bot.send_video(uid, file_id, caption=caption)
-            elif media_type == 'photo':
-                sent = await bot.send_photo(uid, file_id, caption=caption)
-            else:
-                sent = await bot.send_message(uid, caption)
-            
-            sent_ids[str(uid)] = sent.message_id
-            success_count += 1
-            await asyncio.sleep(0.3)
-        except Exception as e:
-            logging.error(f"Broadcast error for {uid}: {e}")
-
-    media_data = {
-        'type': media_type,
-        'file_id': file_id,
-        'text': caption if media_type == 'text' else '',
-        'caption': caption if media_type != 'text' else '',
-        'sent_message_ids': sent_ids,
-        'admin_msg_id': message.message_id
-    }
-    media_storage.append(media_data)
-    save_media(media_storage)
-    
-    await message.answer(f"🚀 Հաջողությամբ ուղարկվեց!\n👥 Ընդհանուր բաժանորդների քանակը բոտում: **{total_users}** հոգի (հասավ {success_count}-ին):", parse_mode=ParseMode.MARKDOWN)
+        await message.answer("Ախպեր ջան, բոտը հսկում է ալիքը:")
 
 async def handle(request):
     return web.Response(text="Bot is running 24/7!")
@@ -207,7 +121,7 @@ async def main():
             await dp.start_polling(bot)
         except Exception as e:
             logging.error(f"Error: {e}. Վերագործարկում 5 վայրկյանից...")
-            await asyncio.sleep(5)
+            asyncio.sleep(5)
 
 if __name__ == "__main__":
     asyncio.run(main())
