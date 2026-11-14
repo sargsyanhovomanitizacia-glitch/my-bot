@@ -17,6 +17,7 @@ ADMIN_ID = 6199289062  # <--- ՔՈ ՃԻՇՏ ID-Ն
 
 router = Router()
 DB_FILE = "media_data.json"
+USERS_FILE = "users_data.json"
 
 def load_media():
     if os.path.exists(DB_FILE):
@@ -34,6 +35,28 @@ def save_media(media_list):
     except Exception as e:
         logging.error(f"Save error: {e}")
 
+def load_users():
+    if os.path.exists(USERS_FILE):
+        try:
+            with open(USERS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return []
+
+def save_users(users_list):
+    try:
+        with open(USERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(users_list, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        pass
+
+def add_user(user_id):
+    users = load_users()
+    if user_id not in users and user_id != ADMIN_ID:
+        users.append(user_id)
+        save_users(users)
+
 async def check_subscription(user_id: int, bot: Bot) -> bool:
     if user_id == ADMIN_ID:
         return True
@@ -45,32 +68,24 @@ async def check_subscription(user_id: int, bot: Bot) -> bool:
         logging.error(f"Subscription check error: {e}")
     return False
 
-async def send_media_to_user(target_message: Message, bot: Bot):
+async def send_media_to_user(target_chat_id: int, bot: Bot):
     media_storage = load_media()
     if not media_storage:
-        await target_message.answer("✅ Բարի գալուստ! Բայց առայժմ նյութեր չկան:")
+        await bot.send_message(target_chat_id, "✅ Բարի գալուստ! Բայց առայժմ նյութեր չկան:")
         return
     
-    await target_message.answer("✅ Բարի գալուստ! Ահա քեզ հասանելի նյութերը:")
+    await bot.send_message(target_chat_id, "✅ Բարի գալուստ! Ահա քեզ հասանելի նյութերը:")
     for media in media_storage:
-        try:
-            # Ուղղակի պատճենում ենք (copy) հենց ադմինի ուղարկած նյութը ու ուղարկում բաժանորդին
-            await bot.copy_message(
-                chat_id=target_message.chat.id,
-                from_chat_id=ADMIN_ID,
-                message_id=media['message_id']
-            )
-        except Exception as e:
-            logging.error(f"Copy message error: {e}")
-            # Եթե copy-ն չստացվի, փորձում ենք file_id-ով
-            if media['type'] == 'video':
-                await target_message.answer_video(media['file_id'], caption=media.get('caption', ''))
-            elif media['type'] == 'photo':
-                await target_message.answer_photo(media['file_id'], caption=media.get('caption', ''))
+        if media['type'] == 'video':
+            await bot.send_video(target_chat_id, media['file_id'], caption=media.get('caption', ''))
+        elif media['type'] == 'photo':
+            await bot.send_photo(target_chat_id, media['file_id'], caption=media.get('caption', ''))
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, bot: Bot):
     user_id = message.from_user.id
+    add_user(user_id)
+    
     is_subscribed = await check_subscription(user_id, bot)
     
     if not is_subscribed:
@@ -86,11 +101,12 @@ async def cmd_start(message: Message, bot: Bot):
             parse_mode=ParseMode.MARKDOWN
         )
     else:
-        await send_media_to_user(message, bot)
+        await send_media_to_user(message.chat.id, bot)
 
 @router.callback_query(F.data == "check_sub")
 async def process_check_sub(callback: CallbackQuery, bot: Bot):
     user_id = callback.from_user.id
+    add_user(user_id)
     is_subscribed = await check_subscription(user_id, bot)
     
     if is_subscribed:
@@ -98,23 +114,38 @@ async def process_check_sub(callback: CallbackQuery, bot: Bot):
             await callback.message.delete()
         except Exception:
             pass
-        await send_media_to_user(callback.message, bot)
+        await send_media_to_user(callback.message.chat.id, bot)
     else:
         await callback.answer("❌ Դու դեռ չես միացել ալիքին: Նախ միացիր, հետո սեղմիր կրկին։", show_alert=True)
 
 @router.message(F.from_user.id == ADMIN_ID)
 async def admin_upload_media(message: Message, bot: Bot):
-    media_storage = load_media()
     if message.video or message.photo:
+        media_storage = load_media()
         media_data = {
             'type': 'video' if message.video else 'photo',
             'file_id': message.video.file_id if message.video else message.photo[-1].file_id,
-            'message_id': message.message_id, # Ամենակարևորը՝ հաղորդագրության իդն է
             'caption': message.caption or ''
         }
         media_storage.append(media_data)
         save_media(media_storage)
-        await message.answer("💾 Նյութը հաջողությամբ գրանցվեց բազայում և պատրաստ է բոլորին ցույց տալու համար!")
+        
+        await message.answer("💾 Նյութը հաջողությամբ պահպանվեց և ուղարկվում է բոլորին...")
+        
+        # Ավտոմատ անմիջապես ուղարկում ենք բոլորին
+        users = load_users()
+        success_count = 0
+        for uid in users:
+            try:
+                if media_data['type'] == 'video':
+                    await bot.send_video(uid, media_data['file_id'], caption=media_data['caption'])
+                elif media_data['type'] == 'photo':
+                    await bot.send_photo(uid, media_data['file_id'], caption=media_data['caption'])
+                success_count += 1
+            except Exception as e:
+                logging.error(f"Broadcast error for user {uid}: {e}")
+                
+        await message.answer(f"🚀 Նյութը հաջողությամբ հասավ {success_count} բաժանորդի!")
     else:
         await message.answer("Ախպեր ջան, միայն նկար կամ վիդեո ուղարկիր:")
 
@@ -144,7 +175,8 @@ async def main():
             await dp.start_polling(bot)
         except Exception as e:
             logging.error(f"Error: {e}. Վերագործարկում 5 վայրկյանից...")
-            await asyncio.sleep(5)
+            asyncio.sleep(5)
 
 if __name__ == "__main__":
     asyncio.run(main())
+    
