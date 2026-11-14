@@ -6,7 +6,6 @@ import json
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.client.default import DefaultBotProperties
 
@@ -14,7 +13,7 @@ from aiogram.client.default import DefaultBotProperties
 # ⚙️ ՀԻՄՆԱԿԱՆ ԿԱՐԳԱՎՈՐՈՒՄՆԵՐ
 # ==========================================
 TOKEN = os.getenv("BOT_TOKEN", "9197794771:AAFzNqdHgkpF86BPdTE_S01dyBfpmm_c")
-SERIES_CHANNEL_URL = "https://t.me/+w8z8QXfji_Y0ZTcy"    # 🎬 ՔՈ ՆՈՐ ՍԵՐԻԱՆԵՐԻ ԱԼԻՔԻ ՀՂՈՒՄԸ
+SERIES_CHANNEL_URL = "https://t.me/+w8z8QXfji_Y0ZTcy"    # 🎬 ՔՈ ՍԵՐԻԱՆԵՐԻ ԱԼԻՔԻ ՀՂՈՒՄԸ
 ADMIN_ID = 6199289062
 
 router = Router()
@@ -72,16 +71,16 @@ def get_series_keyboard() -> InlineKeyboardMarkup:
     )
 
 # ==========================================
-# 🚀 ՕԳՏԱՏԵՐԵՐԻ ՄՈՒՏՔ
+# 🚀 ՕԳՏԱՏԵՐԵՐԻ ՄՈՒՏՔ (ԱՆԹԵՐԻ /start)
 # ==========================================
-@router.message(CommandStart())
+@router.message(F.text == "/start")
 async def cmd_start(message: Message, bot: Bot):
     user_id = message.from_user.id
     register_user(user_id)
 
     await message.answer(
         "👋 **Բարի գալուստ!**\n\n"
-        "Սեղմիր ներքևի կոճակը՝ մեր ալիք մտնելու և սերիաները դիտելու համար 👇",
+        "Սեղմիր ներքևի կոճակը՝ սերիաները դիտելու համար 👇",
         reply_markup=get_series_keyboard(),
         parse_mode=ParseMode.MARKDOWN
     )
@@ -189,7 +188,7 @@ async def main():
     await web_server()
     await bot.delete_webhook(drop_pending_updates=True)
     
-    while True:
+    while TypeError := True:
         try:
             logging.info("Բոտը միանում է...")
             await dp.start_polling(bot)
