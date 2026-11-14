@@ -2,6 +2,7 @@ import os
 import asyncio
 import logging
 import sys
+import json
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.enums import ChatMemberStatus
@@ -15,15 +16,23 @@ CHANNEL_ID = "@canabisee"
 ADMIN_ID = 6199289062  # <--- ՔՈ ՃԻՇՏ ID-Ն
 
 router = Router()
+DB_FILE = "media_data.json"
 
-# 📌 ԱՅՍՏԵՂ ԴՐՎԱԾ Է ՎԻԴԵՈՆ (փոխարինիր file_id-ն քո ուղարկած վիդեոյի կոդով)
-MEDIA_STORAGE = [
-    {
-        'type': 'video', 
-        'file_id': 'BAACAgIAAxkBAAI...', 
-        'caption': 'Սերիա 1'
-    }
-]
+def load_media():
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return []
+
+def save_media(media_list):
+    try:
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(media_list, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        logging.error(f"Save error: {e}")
 
 async def check_subscription(user_id: int, bot: Bot) -> bool:
     if user_id == ADMIN_ID:
@@ -36,13 +45,28 @@ async def check_subscription(user_id: int, bot: Bot) -> bool:
         logging.error(f"Subscription check error: {e}")
     return False
 
-async def send_media_to_user(target):
-    await target.answer("✅ Բարի գալուստ! Ահա քեզ հասանելի նյութերը:")
-    for media in MEDIA_STORAGE:
-        if media['type'] == 'video':
-            await target.answer_video(media['file_id'], caption=media.get('caption', ''))
-        elif media['type'] == 'photo':
-            await target.answer_photo(media['file_id'], caption=media.get('caption', ''))
+async def send_media_to_user(target_message: Message, bot: Bot):
+    media_storage = load_media()
+    if not media_storage:
+        await target_message.answer("✅ Բարի գալուստ! Բայց առայժմ նյութեր չկան:")
+        return
+    
+    await target_message.answer("✅ Բարի գալուստ! Ահա քեզ հասանելի նյութերը:")
+    for media in media_storage:
+        try:
+            # Ուղղակի պատճենում ենք (copy) հենց ադմինի ուղարկած նյութը ու ուղարկում բաժանորդին
+            await bot.copy_message(
+                chat_id=target_message.chat.id,
+                from_chat_id=ADMIN_ID,
+                message_id=media['message_id']
+            )
+        except Exception as e:
+            logging.error(f"Copy message error: {e}")
+            # Եթե copy-ն չստացվի, փորձում ենք file_id-ով
+            if media['type'] == 'video':
+                await target_message.answer_video(media['file_id'], caption=media.get('caption', ''))
+            elif media['type'] == 'photo':
+                await target_message.answer_photo(media['file_id'], caption=media.get('caption', ''))
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, bot: Bot):
@@ -62,7 +86,7 @@ async def cmd_start(message: Message, bot: Bot):
             parse_mode=ParseMode.MARKDOWN
         )
     else:
-        await send_media_to_user(message)
+        await send_media_to_user(message, bot)
 
 @router.callback_query(F.data == "check_sub")
 async def process_check_sub(callback: CallbackQuery, bot: Bot):
@@ -74,16 +98,25 @@ async def process_check_sub(callback: CallbackQuery, bot: Bot):
             await callback.message.delete()
         except Exception:
             pass
-        await send_media_to_user(callback.message)
+        await send_media_to_user(callback.message, bot)
     else:
         await callback.answer("❌ Դու դեռ չես միացել ալիքին: Նախ միացիր, հետո սեղմիր կրկին։", show_alert=True)
 
 @router.message(F.from_user.id == ADMIN_ID)
-async def admin_upload_media(message: Message):
-    if message.video:
-        await message.answer(f"💾 Վիդեոյիդ file_id-ն է (պատճենիր սա):\n`{message.video.file_id}`", parse_mode=ParseMode.MARKDOWN)
+async def admin_upload_media(message: Message, bot: Bot):
+    media_storage = load_media()
+    if message.video or message.photo:
+        media_data = {
+            'type': 'video' if message.video else 'photo',
+            'file_id': message.video.file_id if message.video else message.photo[-1].file_id,
+            'message_id': message.message_id, # Ամենակարևորը՝ հաղորդագրության իդն է
+            'caption': message.caption or ''
+        }
+        media_storage.append(media_data)
+        save_media(media_storage)
+        await message.answer("💾 Նյութը հաջողությամբ գրանցվեց բազայում և պատրաստ է բոլորին ցույց տալու համար!")
     else:
-        await message.answer("Ախպեր ջան, այս տարբերակում վիդեոն ուղղակի գրում ենք կոդի մեջ։")
+        await message.answer("Ախպեր ջան, միայն նկար կամ վիդեո ուղարկիր:")
 
 async def handle(request):
     return web.Response(text="Bot is running 24/7!")
@@ -115,4 +148,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
