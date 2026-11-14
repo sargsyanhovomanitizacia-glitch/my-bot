@@ -16,11 +16,11 @@ ADMIN_ID = 6199289062  # <--- ՔՈ ՃԻՇՏ ID-Ն
 
 router = Router()
 
-# 📌 Նյութերը հավերժ դրված են այստեղ, ոչ մի դատարկ բան չկա
+# 📌 ԱՅՍՏԵՂ ԴՐՎԱԾ Է ՎԻԴԵՈՆ (փոխարինիր file_id-ն քո ուղարկած վիդեոյի կոդով)
 MEDIA_STORAGE = [
     {
         'type': 'video', 
-        'file_id': 'BAACAgIAAxkBAAI... (քո վիդեոյի ֆայլի ID-ն)', 
+        'file_id': 'BAACAgIAAxkBAAI...', 
         'caption': 'Սերիա 1'
     }
 ]
@@ -81,13 +81,9 @@ async def process_check_sub(callback: CallbackQuery, bot: Bot):
 @router.message(F.from_user.id == ADMIN_ID)
 async def admin_upload_media(message: Message):
     if message.video:
-        fid = message.video.file_id
-        await message.answer(f"💾 Վիդեոն ֆիքսվեց:\n`{fid}`", parse_mode=ParseMode.MARKDOWN)
-    elif message.photo:
-        fid = message.photo[-1].file_id
-        await message.answer(f"💾 Նկարը ֆիքսվեց:\n`{fid}`", parse_mode=ParseMode.MARKDOWN)
+        await message.answer(f"💾 Վիդեոյիդ file_id-ն է (պատճենիր սա):\n`{message.video.file_id}`", parse_mode=ParseMode.MARKDOWN)
     else:
-        await message.answer("Ախպեր ջան, միայն նկար կամ վիդեո ուղարկիր:")
+        await message.answer("Ախպեր ջան, այս տարբերակում վիդեոն ուղղակի գրում ենք կոդի մեջ։")
 
 async def handle(request):
     return web.Response(text="Bot is running 24/7!")
@@ -119,3 +115,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+    
