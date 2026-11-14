@@ -11,7 +11,7 @@ from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, C
 from aiogram.client.default import DefaultBotProperties
 
 # ==========================================
-# ⚙️ ԿԱՐԳԱՎՈՐՈՒՄՆԵՐ
+# ⚙️ ՀԻՄՆԱԿԱՆ ԿԱՐԳԱՎՈՐՈՒՄՆԵՐ
 # ==========================================
 TOKEN = os.getenv("BOT_TOKEN", "9197794771:AAFzNqdHgkpF86BPdTE_S01dyBfpmm_c")
 CHANNEL_ID = "@canabisee"
@@ -60,7 +60,7 @@ def register_user(user_id: int):
         save_users(users)
 
 # ==========================================
-# 🛡️ ՍՏՈՒԳՄԱՆ ՀԱՄԱԿԱՐԳ (Anti-Cheat)
+# 🛡️ ՍՏՈՒԳՄԱՆ ՀԱՄԱԿԱՐԳ (ANTI-CHEAT)
 # ==========================================
 async def is_user_subscribed(user_id: int, bot: Bot) -> bool:
     if user_id == ADMIN_ID:
@@ -89,9 +89,21 @@ async def send_all_media(chat_id: int, bot: Bot):
     for media in MEDIA_STORAGE:
         try:
             if media['type'] == 'video':
-                await bot.send_video(chat_id, media['file_id'], caption=media['caption'], parse_mode=ParseMode.MARKDOWN, protect_content=True)
+                await bot.send_video(
+                    chat_id, 
+                    media['file_id'], 
+                    caption=media['caption'], 
+                    parse_mode=ParseMode.MARKDOWN, 
+                    protect_content=True
+                )
             elif media['type'] == 'photo':
-                await bot.send_photo(chat_id, media['file_id'], caption=media['caption'], parse_mode=ParseMode.MARKDOWN, protect_content=True)
+                await bot.send_photo(
+                    chat_id, 
+                    media['file_id'], 
+                    caption=media['caption'], 
+                    parse_mode=ParseMode.MARKDOWN, 
+                    protect_content=True
+                )
             await asyncio.sleep(0.3)
         except Exception as e:
             logging.error(f"Send media error: {e}")
@@ -155,7 +167,6 @@ async def admin_broadcast(message: Message, bot: Bot):
     skipped_unsub = 0
 
     for uid in users:
-        # Ստուգում ենք՝ մարդը իրո՞ք ալիքում է, թե դուրս է եկել (խաբում է)
         if not await is_user_subscribed(uid, bot):
             skipped_unsub += 1
             continue
@@ -212,7 +223,7 @@ async def main():
             await dp.start_polling(bot)
         except Exception as e:
             logging.error(f"Error: {e}. Վերագործարկում 5 վայրկյանից...")
-            asyncio.sleep(5)
+            await asyncio.sleep(5)
 
 if __name__ == "__main__":
     asyncio.run(main())
